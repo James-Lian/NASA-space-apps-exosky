@@ -1,10 +1,13 @@
 from tkinter import *
 from tkinter import scrolledtext
 from astroquery.ipac.nexsci.nasa_exoplanet_archive import NasaExoplanetArchive
-
+import math
 import threading
 import asyncio
 
+from renderer import open_pygame_window
+exoplanet_ra = None
+exoplanet_dec = None
 root = Tk()
 
 planets = ["<None>"]
@@ -22,6 +25,7 @@ async def fetch_exoplanet_data():
 
     def query():
         # table definitions: https://exoplanetarchive.ipac.caltech.edu/docs/API_PS_columns.html#choose
+        
         return NasaExoplanetArchive.query_criteria(table="pscomppars", select="pl_name")
     
     exoplanet_data = await asyncio.to_thread(query)
@@ -64,6 +68,7 @@ async def fetch_exoplanet(pl_name):
     return dict_data
 
 def start_exoplanet_fetch(tk_elem, pl_name):
+    global exoplanet_ra, exoplanet_dec  # Access global variables
     if pl_name != "<None>":
         tk_elem.configure(state=NORMAL)
         tk_elem.delete('1.0', END)
@@ -80,8 +85,14 @@ def start_exoplanet_fetch(tk_elem, pl_name):
             " Planet Equilibrium Temperature: " + str(info_data["pl_eqt"]) + " K\n"
             " Distance from Earth: " + str(info_data["sy_dist"]) + " parsecs\n"
             " Radius of Host Star: " + str(info_data["st_rad"]) + " solar radii\n"
-            " Mass of Host Star: " + str(info_data["st_mass"]) + " solar masses"
+            " Mass of Host Star: " + str(info_data["st_mass"]) + " solar masses\n"
+            " Exoplanet RA: " + str(info_data["ra"]) + "\n"
+            " Exoplanet Dec: " + str(info_data["dec"]) + "\n"
         )
+
+        # Store RA and Dec
+        exoplanet_ra = math.radians(info_data["ra"])
+        exoplanet_dec = math.radians(info_data["dec"])
 
         tk_elem.configure(state=NORMAL)
         tk_elem.delete('1.0', END)
@@ -91,6 +102,8 @@ def start_exoplanet_fetch(tk_elem, pl_name):
         tk_elem.configure(state=NORMAL)
         tk_elem.delete('1.0', END)
         tk_elem.configure(state=DISABLED)
+
+
 
 exoplanet_name = StringVar()
 exoplanet_name.set("[exoplanet name]")
@@ -170,7 +183,8 @@ def root_window():
     info_box = scrolledtext.ScrolledText(frame_r, wrap=WORD, width=10, font=("Segoe", 12, "bold"), bg="#968ef6", fg="#FFFFFF", relief=FLAT, state=DISABLED)
     info_box.pack(fill=BOTH, expand=True)
 
-    go_button = Button(frame_r, text=" GO! >> ", relief="groove", width=28, font=("Segoe", 14, "bold"))
+    go_button = Button(frame_r, text=" GO! >> ", relief="groove", width=28, font=("Segoe", 14, "bold"),
+                   command=lambda: threading.Thread(target=lambda: open_pygame_window(exoplanet_ra, exoplanet_dec), daemon=True).start())
     go_button.pack(fill=X, side=BOTTOM)
 
     statusbar = Frame(root)
@@ -182,4 +196,3 @@ def root_window():
     root.mainloop()
 
 root_window()
-

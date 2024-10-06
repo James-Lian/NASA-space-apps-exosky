@@ -45,7 +45,6 @@ def fetch_star_data(exo_ra, exo_dec):
     parallaxes = []
 
     
-
     # Debug print the available columns
     #print("Available columns in the results:", result.colnames)
 
@@ -71,13 +70,27 @@ def draw_stars(screen, stars, screen_width, screen_height, offset_x, offset_y, z
     pygame.draw.circle(screen, WHITE, (offset_x - offset_x + (screen_width/2), offset_y - offset_y + (screen_height/2)), 25) 
     
     for source_id, ra, dec, distance, x, y, z in stars:
+        star_surface = pygame.Surface((screen_width, screen_height), pygame.SRCALPHA)
+
         # Project 3D coordinates to 2D
         x_2d, y_2d = project_3d_to_2d(x, y, z, screen_width, screen_height, offset_x, offset_y, zoom_factor)
         
-        # Debug: Check if the projected coordinates are within bounds
-        if -screen_width <= x_2d < screen_width and -screen_height <= y_2d < screen_height:
-            # Draw the star as a small yellow circle
-            pygame.draw.circle(screen, YELLOW, (x_2d - offset_x + (screen_width/2), y_2d - offset_y + (screen_height/2)), 3 + abs((0.5 * z)))
+        rings = 4 # number of gradient rings
+
+        # Draw glow effect on star_surface
+        for i in range(3, 0, -1):  # Larger to smaller for gradient effect
+            glow_color = (255, 255, 0, int(255 * ((rings+1-i) / 6)))  # Yellow with gradient alpha
+            pygame.draw.circle(star_surface, glow_color, 
+                               (x_2d - offset_x + (screen_width // 2), y_2d - offset_y + (screen_height // 2)), 
+                               3 * i + abs(int(z * 0.5)))
+        
+        # Draw the central star circle on top of the glow
+        pygame.draw.circle(star_surface, YELLOW, 
+                           (x_2d - offset_x + (screen_width // 2), y_2d - offset_y + (screen_height // 2)), 
+                           3 + abs(int(0.5 * z)))
+
+        # Blit the star surface onto the main screen
+        screen.blit(star_surface, (0, 0))
 
 # Project 3D point into 2D space with offset and zoom
 def project_3d_to_2d(x, y, z, screen_width, screen_height, offset_x, offset_y, zoom_factor):

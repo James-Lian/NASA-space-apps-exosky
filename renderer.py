@@ -3,12 +3,14 @@ from OpenGL.GLU import *
 import pygame
 import math
 from astroquery.gaia import Gaia
+import numpy as np
+
+pygame.font.init()
 
 # Define colors
 WHITE = (255, 255, 255)
 YELLOW = (255, 255, 0)
 BLACK = (0, 0, 0)
-GREEN = (0, 255, 0)
 RED = (255, 0, 0)  # Color for the star name display
 
 # Function to convert RA, Dec, and distance into Cartesian coordinates
@@ -27,18 +29,47 @@ def calculate_distance(ra1, dec1, ra2, dec2):
     # Simple Euclidean distance for demonstration; we might need a more accurate celestial distance calculation
     return ((ra1 - ra2) ** 2 + (dec1 - dec2) ** 2) ** 0.5
 
+def planck_law(wavelength, temperature):
+    h = 6.626e-34  # Planck's constant (J s)
+    c = 3.00e8     # Speed of light (m/s)
+    k = 1.381e-23  # Boltzmann's constant (J/K)
+
+    """Calculate the intensity using Planck's Law."""
+    return (2 * h * c**2) / (wavelength**5) / (np.exp((h * c) / (wavelength * k * temperature)) - 1)
+
+def temperature_to_rgb(temp):
+    wavelengths = np.linspace(380e-9, 750e-9, 1000)  # Visible range in meters
+    intensities = planck_law(wavelengths, temp)
+
+    # Integrate for RGB channels
+    red = np.trapz(intensities[(wavelengths >= 620e-9) & (wavelengths <= 750e-9)], wavelengths[(wavelengths >= 620e-9) & (wavelengths <= 750e-9)])
+    green = np.trapz(intensities[(wavelengths >= 495e-9) & (wavelengths <= 570e-9)], wavelengths[(wavelengths >= 495e-9) & (wavelengths <= 570e-9)])
+    blue = np.trapz(intensities[(wavelengths >= 380e-9) & (wavelengths <= 495e-9)], wavelengths[(wavelengths >= 380e-9) & (wavelengths <= 495e-9)])
+
+    # Normalize to 255
+    total_intensity = red + green + blue
+    red = int((red / total_intensity) * 255)
+    green = int((green / total_intensity) * 255)
+    blue = int((blue / total_intensity) * 255)
+
+    return (red, green, blue)
+
+
 # Fetch star data from Gaia Catalog
 def fetch_star_data(exo_ra, exo_dec):
     stars = []
     
     # Query to fetch data
     query = f"""
-    SELECT SOURCE_ID, ra, dec, parallax
+    SELECT SOURCE_ID, ra, dec, parallax, phot_bp_mean_mag, phot_rp_mean_mag
     FROM gaiadr3.gaia_source
-    WHERE DISTANCE(POINT({exo_ra}, {exo_dec}), POINT(ra, dec)) < 1000000000000
+    WHERE DISTANCE(POINT({exo_ra}, {exo_dec}), POINT(ra, dec)) < 100000000
     AND parallax IS NOT NULL
+    AND phot_bp_mean_mag IS NOT NULL
+    AND phot_rp_mean_mag IS NOT NULL
     """
     
+
     # Execute the query and get results
     job = Gaia.launch_job(query)
     result = job.get_results()
@@ -54,43 +85,65 @@ def fetch_star_data(exo_ra, exo_dec):
         star_dec = row['dec']
         distance = calculate_distance(exo_ra, exo_dec, star_ra, star_dec)  # Implement calculate_distance method
 
+        color_index = row['phot_bp_mean_mag'] - row['phot_rp_mean_mag']
+        temp = 4600 * (1 / (0.92 * color_index + 1.7) + 1 / (0.92 * color_index + 0.62))
+        rgb = temperature_to_rgb(temp)
+
         if distance < 1000:  # Define a threshold distance for "closeness"
             parallax = row['parallax']
             parallaxes.append(parallax)
             x, y, z = convert_to_cartesian(star_ra, star_dec, parallax)
-            stars.append((row['SOURCE_ID'], star_ra, star_dec, distance, x, y, z))
+            stars.append((row['SOURCE_ID'], star_ra, star_dec, distance, x, y, z, rgb))
     if parallaxes:
         print(f"Parallax range: min={min(parallaxes)}, max={max(parallaxes)}")
     return stars
 
-    
+def lighten_rgb(r, g, b, factor):
+    r, g, b = r * factor, g * factor, b * factor
+    threshold = 255.999
+    m = max(r, g, b)
+    if m <= threshold:
+        return int(r), int(g), int(b)
+    total = r + g + b
+    if total >= 3 * threshold:
+        return int(threshold), int(threshold), int(threshold)
+    x = (3 * threshold - total) / (3 * m - total)
+    gray = threshold - x * m
+    return (int(gray + x * r), int(gray + x * g), int(gray + x * b))
 
 # Draw the stars and Earth
 def draw_stars(screen, stars, screen_width, screen_height, offset_x, offset_y, zoom_factor):
-    pygame.draw.circle(screen, WHITE, (offset_x - offset_x + (screen_width/2), offset_y - offset_y + (screen_height/2)), 25) 
-    
-    for source_id, ra, dec, distance, x, y, z in stars:
+    for source_id, ra, dec, distance, x, y, z, rgb in stars:
         star_surface = pygame.Surface((screen_width, screen_height), pygame.SRCALPHA)
 
         # Project 3D coordinates to 2D
         x_2d, y_2d = project_3d_to_2d(x, y, z, screen_width, screen_height, offset_x, offset_y, zoom_factor)
         
-        rings = 4 # number of gradient rings
+        # Debug: Check if the projected coordinates are within bounds
+        if -screen_width <= x_2d < screen_width and -screen_height <= y_2d < screen_height:
+            rings = 3 # number of gradient rings
+            opacity = max(1 - math.sqrt(abs(z) / 300), 0.3)
 
-        # Draw glow effect on star_surface
-        for i in range(3, 0, -1):  # Larger to smaller for gradient effect
-            glow_color = (255, 255, 0, int(255 * ((rings+1-i) / 6)))  # Yellow with gradient alpha
-            pygame.draw.circle(star_surface, glow_color, 
-                               (x_2d - offset_x + (screen_width // 2), y_2d - offset_y + (screen_height // 2)), 
-                               3 * i + abs(int(z * 0.5)))
-        
-        # Draw the central star circle on top of the glow
-        pygame.draw.circle(star_surface, YELLOW, 
-                           (x_2d - offset_x + (screen_width // 2), y_2d - offset_y + (screen_height // 2)), 
-                           3 + abs(int(0.5 * z)))
+            # Draw glow effect on star_surface
+            for i in range(rings, 0, -1):  # Larger to smaller for gradient effect
+                glow_color = lighten_rgb(rgb[0], rgb[1], rgb[2], 1.6) + (int(255 * ((rings+1-i) / rings) * opacity) ,)  # comma to tell Python to treat integer in brackets as tuple
+                pygame.draw.circle(star_surface, glow_color, 
+                                (x_2d - offset_x + (screen_width // 2), y_2d - offset_y + (screen_height // 2)), 
+                                3 * i + abs(int(z * 0.5)))
+            
+            # Draw the central star circle on top of the glow
+            pygame.draw.circle(star_surface, lighten_rgb(rgb[0], rgb[1], rgb[2], 2) + (255 * opacity,), 
+                            (x_2d - offset_x + (screen_width // 2), y_2d - offset_y + (screen_height // 2)), 
+                            3 + abs(int(0.5 * z)))
+ 
+            # Blit the star surface onto the main screen
+            screen.blit(star_surface, (0, 0))
 
-        # Blit the star surface onto the main screen
-        screen.blit(star_surface, (0, 0))
+    font = pygame.font.Font(None, 22)
+    text_surface = font.render("Click on a star for more info! Pan around the exoplanet with arrow keys, and zoom out with +/-", True, WHITE)
+    screen.blit(text_surface, (10, screen_height-30))
+    
+    pygame.draw.circle(screen, WHITE, (offset_x - offset_x + (screen_width/2), offset_y - offset_y + (screen_height/2)), 25) # draw the white exoplanet
 
 # Project 3D point into 2D space with offset and zoom
 def project_3d_to_2d(x, y, z, screen_width, screen_height, offset_x, offset_y, zoom_factor):
@@ -100,7 +153,7 @@ def project_3d_to_2d(x, y, z, screen_width, screen_height, offset_x, offset_y, z
     return x_2d, y_2d
 
 # Main function to open the pygame window
-def open_pygame_window(ra, dec):
+def open_pygame_window(ra, dec, name):
     pygame.init()
 
     x_exoplanet, y_exoplanet, z_exoplanet = convert_to_cartesian(ra, dec, 1)
@@ -111,7 +164,7 @@ def open_pygame_window(ra, dec):
     pygame.display.set_caption('Star Data Visualization')
 
     # Load font
-    font = pygame.font.Font(None, 36)
+    font = pygame.font.Font(None, 32)
 
     # Fetch star data
     stars = fetch_star_data(ra, dec)
@@ -135,9 +188,9 @@ def open_pygame_window(ra, dec):
                     mouse_x, mouse_y = event.pos
                     
                     # Check if any star is clicked
-                    for source_id, ra, dec, distance, x, y, z in stars:
+                    for source_id, ra, dec, distance, x, y, z, rgb in stars:
                         x_2d, y_2d = project_3d_to_2d(x, y, z, window_size[0], window_size[1], offset_x, offset_y, zoom_factor)
-                        if (mouse_x - (x_2d - offset_x + (window_size[0]/2))) ** 2 + (mouse_y - (y_2d - offset_y + (window_size[1]/2))) ** 2 <= 3 ** 2:  # Check if within the circle of the star
+                        if (mouse_x - (x_2d - offset_x + (window_size[0]/2))) ** 2 + (mouse_y - (y_2d - offset_y + (window_size[1]/2))) ** 2 <= (3 + abs(int(0.5 * z)))**2:  # Check if within the circle of the star
                             selected_star_name = source_id
                             break  # Exit loop after finding a star
 
@@ -150,6 +203,12 @@ def open_pygame_window(ra, dec):
                     else:
                         screen = pygame.display.set_mode(window_size, pygame.RESIZABLE)
 
+                if event.key == pygame.K_F2:
+                    pygame.image.save(screen, "screenshot.jpg")
+                    print("Screenshot saved as screenshot.jpg")
+                    screenshot_text_surface = font.render("Screenshot saved as screenshot.jpg", True, WHITE)  
+                    screen.blit(screenshot_text_surface, (10, 70))  # Display at the top-left corner
+                    
                 # Handle zooming
                 if event.key == pygame.K_PLUS or event.key == pygame.K_EQUALS:  # Zoom in
                     zoom_factor += 10
@@ -177,13 +236,18 @@ def open_pygame_window(ra, dec):
         # Draw Earth and stars
         draw_stars(screen, stars, window_size[0], window_size[1], offset_x, offset_y, zoom_factor)
 
+        font = pygame.font.Font(None, 38)
+        text_surface = font.render(str(name), True, WHITE)
+        screen.blit(text_surface, (10, 10))
+
         # Display the name of the selected star
         if selected_star_name:
-            text_surface = font.render(str(selected_star_name), True, RED)  # Render the star name in red
-            screen.blit(text_surface, (10, 10))  # Display at the top-left corner
+            text_surface = font.render("Star ID: " + str(selected_star_name), True, RED)  # Render the star name in red
+            screen.blit(text_surface, (10, 40))  # Display at the top-left corner
 
         # Update the display
         pygame.display.flip()
+    
 
     # Quit Pygame when the loop ends
     pygame.quit()

@@ -15,9 +15,6 @@ planets = ["<None>"]
 status_text = StringVar()
 status_text.set("loading...")
 
-def update_statusbar(new_text):
-    status_text.set(new_text)
-
 ## fetching ALL the planets
 async def fetch_exoplanet_data():
     status_text.set("loading... ")
@@ -54,7 +51,7 @@ def update_search(tk_elem, user_query, arr):
 
 ## fetching a specific planet
 async def fetch_exoplanet(pl_name):
-    status_text.set("Fetching data for " + str(pl_name) + "... ")
+    status_text.set("Retrieved data for " + str(pl_name) + "... ")
 
     def query():
         return NasaExoplanetArchive.query_object(pl_name, table="pscomppars")
@@ -72,7 +69,7 @@ def start_exoplanet_fetch(tk_elem, pl_name):
     if pl_name != "<None>":
         tk_elem.configure(state=NORMAL)
         tk_elem.delete('1.0', END)
-        tk_elem.insert(INSERT, "Fetching... ")
+        tk_elem.insert(INSERT, "\n Fetching... ")
         tk_elem.configure(state=DISABLED)
 
         info_data = asyncio.run(fetch_exoplanet(pl_name))
@@ -183,8 +180,8 @@ def root_window():
     info_box = scrolledtext.ScrolledText(frame_r, wrap=WORD, width=10, font=("Segoe", 12, "bold"), bg="#968ef6", fg="#FFFFFF", relief=FLAT, state=DISABLED)
     info_box.pack(fill=BOTH, expand=True)
 
-    go_button = Button(frame_r, text=" GO! >> ", relief="groove", width=28, font=("Segoe", 14, "bold"),
-                   command=lambda: threading.Thread(target=lambda: open_pygame_window(exoplanet_ra, exoplanet_dec), daemon=True).start())
+    go_button = Button(frame_r, text=" GO! >> ", relief="groove", width=28, font=("Segoe", 14, "bold"), 
+                       command=lambda: threading.Thread(target=lambda: open_pygame_window(exoplanet_ra, exoplanet_dec, exoplanet_name.get()), daemon=True).start())
     go_button.pack(fill=X, side=BOTTOM)
 
     statusbar = Frame(root)

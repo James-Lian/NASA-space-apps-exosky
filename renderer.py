@@ -140,7 +140,7 @@ def draw_stars(screen, stars, screen_width, screen_height, offset_x, offset_y, z
             screen.blit(star_surface, (0, 0))
 
     font = pygame.font.Font(None, 22)
-    text_surface = font.render("Click on a star for more info! Pan around the exoplanet with arrow keys, and zoom out with +/-", True, WHITE)
+    text_surface = font.render("Click on a star for more info! Pan around the exoplanet with arrow keys, and zoom out with +/-! Take a screenshot with F2!", True, WHITE)
     screen.blit(text_surface, (10, screen_height-30))
     
     pygame.draw.circle(screen, WHITE, (offset_x - offset_x + (screen_width/2), offset_y - offset_y + (screen_height/2)), 25) # draw the white exoplanet

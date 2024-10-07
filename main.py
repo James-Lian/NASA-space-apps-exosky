@@ -28,7 +28,7 @@ async def fetch_exoplanet_data():
     exoplanet_data = await asyncio.to_thread(query)
     planets.extend(exoplanet_data["pl_name"].tolist())
 
-    status_text.set("Retrieved " + str(len(planets) - 1) + " planets from PsCompPars (NASA Exoplanet Archive)")
+    status_text.set("Retrieving " + str(len(planets) - 1) + " planets from PsCompPars (NASA Exoplanet Archive)")
 
 def start_list_fetch(tk_elem):
     asyncio.run(fetch_exoplanet_data())
